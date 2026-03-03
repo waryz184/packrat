@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-macos:
     runs-on: macos-latest
@@ -19,27 +22,46 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install ffmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+
       - name: Install dependencies
         run: |
           pip install py2app PyQt6 yt-dlp
 
-      - name: Install ffmpeg
-        run: brew install ffmpeg
-
       - name: Build .app
-        run: python3 setup.py py2app
-
-      - name: Package DMG
-        run: bash make_dmg.sh
-
-      - name: Rename DMG with version
-        shell: bash
         run: |
+          python3 setup.py py2app 2>&1
+
+      - name: Build DMG
+        run: |
+          APP="$(pwd)/dist/Packrat.app"
           VERSION="${{ github.ref_name }}"
           if [ -z "$VERSION" ]; then VERSION="dev"; fi
-          FINAL="Packrat-${VERSION}-macos.dmg"
-          mv Packrat-1.0.0.dmg "$FINAL"
-          echo "DMG_NAME=$FINAL" >> "$GITHUB_ENV"
+          OUT="Packrat-${VERSION}-macos.dmg"
+
+          SIZE_KB=$(du -sk "$APP" | awk '{print $1}')
+          SIZE_MB=$(( SIZE_KB / 1024 + 80 ))
+
+          TMP_DMG="/tmp/packrat_build.dmg"
+          MOUNT="/tmp/packrat_vol"
+          rm -f "$TMP_DMG" "$OUT"
+          rm -rf "$MOUNT"
+
+          hdiutil create -size "${SIZE_MB}m" -fs HFS+ -volname "Packrat ${VERSION}" -o "$TMP_DMG" -quiet
+          hdiutil attach "$TMP_DMG" -mountpoint "$MOUNT" -noautoopen -quiet
+
+          cp -R "$APP" "$MOUNT/"
+          ln -s /Applications "$MOUNT/Applications"
+
+          sync
+          sleep 1
+          hdiutil detach "$MOUNT" -quiet
+
+          hdiutil convert "$TMP_DMG" -format UDZO -imagekey zlib-level=9 -o "$OUT" -quiet
+          rm -f "$TMP_DMG"
+
+          echo "DMG_NAME=$OUT" >> "$GITHUB_ENV"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
