@@ -1,0 +1,54 @@
+name: Build macOS DMG
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install py2app PyQt6 yt-dlp
+
+      - name: Install ffmpeg
+        run: brew install ffmpeg
+
+      - name: Build .app
+        run: python3 setup.py py2app
+
+      - name: Package DMG
+        run: bash make_dmg.sh
+
+      - name: Rename DMG with version
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          if [ -z "$VERSION" ]; then VERSION="dev"; fi
+          FINAL="Packrat-${VERSION}-macos.dmg"
+          mv Packrat-1.0.0.dmg "$FINAL"
+          echo "DMG_NAME=$FINAL" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Packrat-macos
+          path: ${{ env.DMG_NAME }}
+
+      - name: Create GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.DMG_NAME }}
