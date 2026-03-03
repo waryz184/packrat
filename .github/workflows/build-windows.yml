@@ -1,0 +1,77 @@
+name: Build Windows Portable
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller PyQt6 yt-dlp
+
+      - name: Convert icon (icns → ico)
+        shell: pwsh
+        run: |
+          # PyInstaller on Windows needs a .ico file.
+          # We include a prebuilt packrat.ico in the repo (see notes).
+          # If missing, PyInstaller just won't embed an icon — not a blocker.
+          if (Test-Path "packrat.ico") {
+            echo "packrat.ico found"
+          } else {
+            echo "packrat.ico not found, building without icon"
+            # Patch the spec to remove the icon reference
+            (Get-Content packrat.spec) -replace 'icon="packrat.ico"', 'icon=None' | Set-Content packrat.spec
+          }
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller packrat.spec --clean
+
+      - name: Download ffmpeg for Windows
+        shell: pwsh
+        run: |
+          $url = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg_tmp -Force
+          $bin = Get-ChildItem ffmpeg_tmp -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+          $ffdir = "dist\Packrat\ffmpeg"
+          New-Item -ItemType Directory -Force -Path $ffdir | Out-Null
+          Copy-Item $bin.FullName "$ffdir\ffmpeg.exe"
+          $ffprobe = Get-ChildItem ffmpeg_tmp -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
+          Copy-Item $ffprobe.FullName "$ffdir\ffprobe.exe"
+          Remove-Item -Recurse -Force ffmpeg_tmp, ffmpeg.zip
+
+      - name: Zip portable release
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          if (-not $version) { $version = "dev" }
+          $zipName = "Packrat-${version}-win64.zip"
+          Compress-Archive -Path "dist\Packrat\*" -DestinationPath $zipName
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Packrat-win64
+          path: ${{ env.ZIP_NAME }}
+
+      - name: Create GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}

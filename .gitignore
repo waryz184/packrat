@@ -1,0 +1,26 @@
+# Build artifacts
+dist/
+build/
+*.dmg
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.eggs/
+*.egg-info/
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# App settings (portable — stays local)
+packrat.ini
+
+# PyInstaller
+*.spec.bak
+
+# Virtual env
+.venv/
+venv/
