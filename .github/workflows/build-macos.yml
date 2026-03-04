@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-macos:
-    runs-on: macos-13
+    runs-on: macos-14   # Apple Silicon (ARM64) — compatible avec brew ffmpeg
 
     steps:
       - name: Checkout
@@ -23,15 +23,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install ffmpeg
-        uses: FedericoCarboni/setup-ffmpeg@v3
+        run: brew install ffmpeg
 
-      - name: Install dependencies
-        run: |
-          pip install py2app PyQt6 yt-dlp
+      - name: Install Python dependencies
+        run: pip install py2app PyQt6 yt-dlp
 
       - name: Build .app
-        run: |
-          python3 setup.py py2app 2>&1
+        run: python3 setup.py py2app 2>&1
 
       - name: Build DMG
         run: |
